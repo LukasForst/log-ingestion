@@ -1,18 +1,15 @@
 -- 1. The Target Table (Where data lives)
 CREATE TABLE IF NOT EXISTS app_logs (
-    timestamp DateTime,
-    level String,
-    message String,
-    container_id String
+    -- milliseconds
+    `vektor_ts` DateTime64(3),
+    `message` String
 ) ENGINE = MergeTree()
-ORDER BY timestamp;
+ORDER BY `vektor_ts`;
 
 -- 2. The Kafka Engine (The Pipe)
 CREATE TABLE IF NOT EXISTS app_logs_queue (
-    timestamp DateTime,
-    level String,
-    message String,
-    container_id String
+    timestamp DateTime64(3),
+    message String
 ) ENGINE = Kafka
 SETTINGS kafka_broker_list = 'redpanda:9092',
          kafka_topic_list = 'app_logs',
@@ -21,4 +18,4 @@ SETTINGS kafka_broker_list = 'redpanda:9092',
 
 -- 3. The Materialized View (The Mover)
 CREATE MATERIALIZED VIEW IF NOT EXISTS app_logs_mv TO app_logs AS
-SELECT * FROM app_logs_queue;
+SELECT timestamp as `vektor_ts`, message as message FROM app_logs_queue;

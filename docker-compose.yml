@@ -42,13 +42,12 @@ services:
     container_name: app-generator
     volumes:
       - shared-logs:/var/log/shared
-    # Writes a JSON log entry every second
+    # Writes a plain text log entry every second
     command: >
       sh -c "
-      apk add --no-cache coreutils &&
       echo 'Starting App...' &&
       while true; do
-        echo \"{\\\"timestamp\\\": \\\"$(date '+%Y-%m-%d %H:%M:%S')\\\", \\\"level\\\": \\\"INFO\\\", \\\"message\\\": \\\"User login detected\\\", \\\"container_id\\\": \\\"container\\\"}\" >> /var/log/shared/app.log;
+        echo \"User login detected\" >> /var/log/shared/app.log;
         sleep 1;
       done"
 

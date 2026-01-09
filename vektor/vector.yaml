@@ -6,19 +6,19 @@ sources:
     ignore_older_secs: 600
 
 transforms:
-  parse_json:
+  add_timestamp:
     type: "remap"
     inputs:
       - "file_logs"
-    # The '|' character allows for multi-line VRL strings in YAML
     source: |
-      . = parse_json!(.message)
+      .timestamp = to_unix_timestamp(now(), unit: "milliseconds")
+      .message = string!(.message)
 
 sinks:
   kafka_out:
     type: "kafka"
     inputs:
-      - "parse_json"
+      - "add_timestamp"
     bootstrap_servers: "redpanda:9092"
     topic: "app_logs"
     encoding:
