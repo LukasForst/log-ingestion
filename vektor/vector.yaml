@@ -1,0 +1,25 @@
+sources:
+  file_logs:
+    type: "file"
+    include:
+      - "/var/log/shared/app.log"
+    ignore_older_secs: 600
+
+transforms:
+  parse_json:
+    type: "remap"
+    inputs:
+      - "file_logs"
+    # The '|' character allows for multi-line VRL strings in YAML
+    source: |
+      . = parse_json!(.message)
+
+sinks:
+  kafka_out:
+    type: "kafka"
+    inputs:
+      - "parse_json"
+    bootstrap_servers: "redpanda:9092"
+    topic: "app_logs"
+    encoding:
+      codec: "json"

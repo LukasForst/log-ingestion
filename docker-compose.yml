@@ -1,0 +1,73 @@
+services:
+  # ensures that we can take down clickhouse + it handles memory pressure really well
+  redpanda:
+    image: docker.redpanda.com/redpandadata/redpanda:latest
+    container_name: redpanda
+    command:
+      - redpanda
+      - start
+      - --mode dev-container
+      # Listen on all interfaces for both ports
+      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
+      # Advertise 'redpanda' to Docker containers, and 'localhost' to your host
+      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
+    ports:
+      - "19092:19092" # External access
+    expose:
+      - 9092 # Internal access for Vector/ClickHouse
+    networks:
+      - ingest
+      - storage
+    # no depends on -> we need to be able to disable clickhouse
+
+  # CH for data storage and query
+  clickhouse:
+    image: clickhouse/clickhouse-server:latest
+    container_name: clickhouse
+    environment:
+      CLICKHOUSE_PASSWORD: default
+    ports:
+      - "8123:8123"
+    networks:
+      - storage
+    volumes:
+      # Mount the initialization script
+      - ./clickhouse/init_clickhouse.sql:/docker-entrypoint-initdb.d/init.sql
+
+
+  # CONTAINER A: The Application (Producer)
+  # Simulates an app writing logs to a file
+  app-generator:
+    image: alpine:latest
+    container_name: app-generator
+    volumes:
+      - shared-logs:/var/log/shared
+    # Writes a JSON log entry every second
+    command: >
+      sh -c "
+      apk add --no-cache coreutils &&
+      echo 'Starting App...' &&
+      while true; do
+        echo \"{\\\"timestamp\\\": \\\"$(date '+%Y-%m-%d %H:%M:%S')\\\", \\\"level\\\": \\\"INFO\\\", \\\"message\\\": \\\"User login detected\\\", \\\"container_id\\\": \\\"container\\\"}\" >> /var/log/shared/app.log;
+        sleep 1;
+      done"
+
+  # CONTAINER B: The Sidecar (Consumer of file, Producer to Kafka)
+  vector-sidecar:
+    image: timberio/vector:nightly-alpine
+    container_name: vector-sidecar
+    depends_on:
+      - redpanda
+      - app-generator
+    networks:
+      - ingest
+    volumes:
+      - ./vektor/vector.yaml:/etc/vector/vector.yaml:ro
+      - shared-logs:/var/log/shared:ro # Read-only access to the same volume
+
+volumes:
+  shared-logs:
+
+networks:
+  ingest:
+  storage:
