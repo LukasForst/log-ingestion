@@ -40,14 +40,14 @@ services:
   app-generator:
     image: alpine:latest
     container_name: app-generator
-    volumes:
-      - shared-logs:/var/log/shared
     # Writes a plain text log entry every second
     command: >
       sh -c "
+      mkdir -p /var/log/shared && 
       echo 'Starting App...' &&
       while true; do
         echo \"User login detected\" >> /var/log/shared/app.log;
+        echo \"howdy person $(date)\";
         sleep 1;
       done"
 
@@ -62,10 +62,7 @@ services:
       - ingest
     volumes:
       - ./vektor/vector.yaml:/etc/vector/vector.yaml:ro
-      - shared-logs:/var/log/shared:ro # Read-only access to the same volume
-
-volumes:
-  shared-logs:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
 
 networks:
   ingest:

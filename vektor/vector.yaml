@@ -1,18 +1,21 @@
 sources:
-  file_logs:
-    type: "file"
-    include:
-      - "/var/log/shared/app.log"
-    ignore_older_secs: 600
+  docker:
+    type: "docker_logs"
+    include_containers:
+      - "app-generator"
+      - "redpanda"
+      - "clickhouse"
+
 
 transforms:
   add_timestamp:
     type: "remap"
     inputs:
-      - "file_logs"
+      - "docker"
     source: |
       .timestamp = to_unix_timestamp(now(), unit: "milliseconds")
       .message = string!(.message)
+      .host = .container_name
 
 sinks:
   kafka_out:
