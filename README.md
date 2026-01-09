@@ -1,5 +1,7 @@
 # Log Pipeline
 
+‼️README was generated, pipeline was not
+
 A distributed log aggregation and storage pipeline using Vector and ClickHouse.
 
 ## Overview
@@ -379,12 +381,4 @@ GROUP BY server, type;
    FROM raw_logs
    WHERE type = 'new_type';
    ```
-
-## License
-
-[Add your license here]
-
-## Contributing
-
-[Add contribution guidelines here]
 
