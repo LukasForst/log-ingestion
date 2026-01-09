@@ -1,0 +1,88 @@
+sources:
+  file_logs:
+    type: "file"
+    include:
+      - "/var/log/shared/app.log"
+    ignore_older_secs: 600
+
+  clickhouse_logs:
+    type: "docker_logs"
+    include_containers:
+      - "clickhouse"
+
+  app_logs:
+    type: "docker_logs"
+    include_containers:
+      - "app"
+      - "app2"
+
+transforms:
+  file_parse:
+    type: "remap"
+    inputs:
+      - file_logs
+    source: |
+      .type = "file"
+
+  clickhouse_parse:
+    type: "remap"
+    inputs:
+      - clickhouse_logs
+    source: |
+      .type = "clickhouse"
+
+  app_parse:
+    type: "remap"
+    inputs:
+      - app_logs
+    source: |
+      .type = "app"
+
+  # merge docker related logs into one stream and add container name
+  funnel_docker:
+    type: "remap"
+    inputs:
+      - clickhouse_parse
+      - app_parse
+    source: |
+      .host = .container_name
+
+  # now aggregate all sources into one so it can be used by sink
+  funnel_all:
+    type: "remap"
+    inputs:
+      - funnel_docker
+      - file_parse
+    source: |
+      .grabbed_ts = to_unix_timestamp(now(), unit: "milliseconds")
+      .server = "edge_vector_1"
+
+sinks:
+  # https://vector.dev/docs/reference/configuration/sinks/http
+  to_central_vector:
+    type: "http"
+    inputs:
+      - funnel_all
+
+    # central URL
+    uri: "http://vector-central:8080"
+    auth:
+      strategy: "basic"
+      user: "central_vector_user"
+      password: "pass"
+
+    # how we send data, needs to be in sync with vector-central.yaml
+    compression: "zstd"
+    encoding:
+      codec: "native"
+
+    # buffering and batching
+    buffer:
+      type: "disk"
+      # ~1GB
+      max_size: 1073741824
+      # we don't really want to drop logs
+      when_full: "block"
+    batch:
+      # we don't really care about fast delivery
+      timeout_secs: 10

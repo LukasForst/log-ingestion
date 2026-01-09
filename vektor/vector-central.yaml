@@ -1,0 +1,49 @@
+sources:
+  # https://vector.dev/docs/reference/configuration/sources/http_server
+  # consider putting behind proxy with TLS
+  from_edge:
+    type: "http_server"
+    address: "0.0.0.0:8080"
+    decoding:
+      codec: "native"
+    auth:
+      strategy: "basic"
+      username: "central_vector_user"
+      password: "pass"
+
+transforms:
+  add_ingested_ts:
+    type: "remap"
+    inputs:
+      - from_edge
+    source: |
+      .ingested_ts = to_unix_timestamp(now(), unit: "milliseconds")
+      .raw_message = .message
+
+sinks:
+  # https://vector.dev/docs/reference/configuration/sinks/clickhouse/
+  to_clickhouse:
+    type: "clickhouse"
+    inputs:
+      - add_ingested_ts
+    endpoint: "http://clickhouse:8123"
+    database: "default"
+    table: "raw_logs"
+    auth:
+      strategy: basic
+      user: "default"
+      password: "default"
+    skip_unknown_fields: true
+    # no need to compress as we run clickhouse and vector centrally
+    compression: "none"
+    # batching & buffering
+    buffer:
+      type: "disk"
+      # ~5GB
+      max_size: 5368709120
+      # do not drop incoming data
+      when_full: "block"
+    batch:
+      # goal is to insert as little as possible, while keeping reasonable latency
+      max_bytes: 10485760 # 10MB
+      timeout_secs: 15

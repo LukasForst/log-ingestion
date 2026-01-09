@@ -1,24 +1,59 @@
 services:
-  # ensures that we can take down clickhouse + it handles memory pressure really well
-  redpanda:
-    image: docker.redpanda.com/redpandadata/redpanda:latest
-    container_name: redpanda
-    command:
-      - redpanda
-      - start
-      - --mode dev-container
-      # Listen on all interfaces for both ports
-      - --kafka-addr internal://0.0.0.0:9092,external://0.0.0.0:19092
-      # Advertise 'redpanda' to Docker containers, and 'localhost' to your host
-      - --advertise-kafka-addr internal://redpanda:9092,external://localhost:19092
-    ports:
-      - "19092:19092" # External access
-    expose:
-      - 9092 # Internal access for Vector/ClickHouse
+  # Simulates an app writing logs to a file
+  app:
+    image: alpine:latest
+    container_name: app
+    volumes:
+      - shared-logs:/var/log/shared
+    # Writes a plain text log entry every second
+    command: >
+      sh -c "
+      echo 'Starting App...' &&
+      while true; do
+        echo \"User login detected\" >> /var/log/shared/app.log;
+        echo \"Oh no from stdout\";
+        sleep 1;
+      done"
+
+  app2:
+    image: alpine:latest
+    container_name: app2
+    # Writes a plain text log entry every second
+    command: >
+      sh -c "
+      echo 'Starting App...' &&
+      while true; do
+        echo \"App 2 from stdout\";
+        sleep 1;
+      done"
+
+
+  # edge vector
+  vector-edge:
+    image: timberio/vector:nightly-alpine
+    container_name: vector-edge
+    depends_on:
+      - app
+    networks:
+      - ingest
+    volumes:
+      - ./vektor/vector-edge.yaml:/etc/vector/vector.yaml:ro
+      # so it can grab docker logs
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      # file read logs
+      - shared-logs:/var/log/shared:ro
+
+  vector-central:
+    image: timberio/vector:nightly-alpine
+    container_name: vector-central
     networks:
       - ingest
       - storage
-    # no depends on -> we need to be able to disable clickhouse
+    expose:
+      # central port for edge vectors to send data
+      - "8080"
+    volumes:
+      - ./vektor/vector-central.yaml:/etc/vector/vector.yaml:ro
 
   # CH for data storage and query
   clickhouse:
@@ -33,36 +68,6 @@ services:
     volumes:
       # Mount the initialization script
       - ./clickhouse/init_clickhouse.sql:/docker-entrypoint-initdb.d/init.sql
-
-
-  # CONTAINER A: The Application (Producer)
-  # Simulates an app writing logs to a file
-  app-generator:
-    image: alpine:latest
-    container_name: app-generator
-    volumes:
-      - shared-logs:/var/log/shared
-    # Writes a plain text log entry every second
-    command: >
-      sh -c "
-      echo 'Starting App...' &&
-      while true; do
-        echo \"User login detected\" >> /var/log/shared/app.log;
-        sleep 1;
-      done"
-
-  # CONTAINER B: The Sidecar (Consumer of file, Producer to Kafka)
-  vector-sidecar:
-    image: timberio/vector:nightly-alpine
-    container_name: vector-sidecar
-    depends_on:
-      - redpanda
-      - app-generator
-    networks:
-      - ingest
-    volumes:
-      - ./vektor/vector.yaml:/etc/vector/vector.yaml:ro
-      - shared-logs:/var/log/shared:ro # Read-only access to the same volume
 
 volumes:
   shared-logs:
