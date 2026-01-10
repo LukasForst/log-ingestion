@@ -18,7 +18,21 @@ sources:
       - "app"
       - "app2"
 
+  vector_internal_logs:
+    type: "internal_logs"
+
 transforms:
+  map_internal_logs:
+    type: "remap"
+    inputs:
+      - vector_internal_logs
+    source: |
+      host, err = get_hostname()
+      if err != null {
+        host = "vector"
+      }
+      . = { "message": encode_json(.), "type": "vector", "host": host }
+
   file_parse:
     type: "remap"
     inputs:
@@ -55,6 +69,7 @@ transforms:
     inputs:
       - funnel_docker
       - file_parse
+      - map_internal_logs
     # we want to send only important data, so we drop everything except
     source: |      
       . = {
