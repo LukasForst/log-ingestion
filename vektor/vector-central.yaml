@@ -62,12 +62,13 @@ transforms:
       }
 
       # best-effort numeric value across common metric types
+      .value = null
       if exists(m.gauge.value) {
-        .value = to_float!(m.gauge.value)
+        .value = to_float(m.gauge.value) ?? null
       } else if exists(m.counter.value) {
-        .value = to_float!(m.counter.value)
-      } else {
-        .value = null
+        .value = to_float(m.counter.value) ?? null
+      } else if exists(m.set.values) {
+        .value = to_float(length!(m.set.values))
       }
       
       . = {
