@@ -1,3 +1,5 @@
+data_dir: "/var/lib/vector"
+
 sources:
   # https://vector.dev/docs/reference/configuration/sources/http_server
   # consider putting behind proxy with TLS

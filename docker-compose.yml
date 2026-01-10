@@ -43,6 +43,8 @@ services:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       # file read logs
       - shared-logs:/var/log/shared:ro
+      # persistent buffer for disk-based buffering
+      - vector-edge-buffer:/var/lib/vector
 
   # in production, vector-edge and vector-metrics is the same service / same container
   # this is here for educational purposes only
@@ -62,6 +64,8 @@ services:
       - /sys:/host/sys:ro
       # disk usage
       - /:/host/root:ro
+      # persistent buffer for disk-based buffering
+      - vector-metrics-buffer:/var/lib/vector
     # so that network metrics collection is correct
     network_mode: host
 
@@ -79,6 +83,8 @@ services:
       - "8080:8080"
     volumes:
       - ./vektor/vector-central.yaml:/etc/vector/vector.yaml:ro
+      # persistent buffer for disk-based buffering
+      - vector-central-buffer:/var/lib/vector
 
   # CH for data storage and query
   clickhouse:
@@ -102,6 +108,9 @@ services:
 
 volumes:
   shared-logs:
+  vector-edge-buffer:
+  vector-metrics-buffer:
+  vector-central-buffer:
 
 networks:
   ingest:
