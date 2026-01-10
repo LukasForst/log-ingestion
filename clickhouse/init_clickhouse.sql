@@ -5,18 +5,18 @@ CREATE TABLE IF NOT EXISTS raw_logs
     `ingested_ts` DateTime64(3),
     -- timestamp when the log was grabbed from the source
     `grabbed_ts`  DateTime64(3),
-    -- name of the server
-    `server`      String,
+    -- name of the server, see LowCardinality -> https://clickhouse.com/docs/sql-reference/data-types/lowcardinality
+    `server`      LowCardinality(String),
     -- name of the host / container
-    `host`        String,
+    `host`        LowCardinality(String),
     -- application type
-    `type`        String,
+    `type`        LowCardinality(String),
     -- original log message to be parsed later
     `raw_message` String
 ) ENGINE = MergeTree()
       PARTITION BY toDate(`ingested_ts`)
       -- this table is for raw logs only, so it does not have to be optimized for search in grabbed_ts
-      ORDER BY `ingested_ts`
+      ORDER BY (`ingested_ts`, `server`, `host`)
       -- clean up raw logs after 7 days
       TTL `ingested_ts` + INTERVAL 7 DAY DELETE;
 
@@ -38,3 +38,24 @@ SELECT grabbed_ts  AS ts,
        raw_message AS message
 FROM raw_logs
 WHERE type = 'app';
+
+
+-- metrics example
+CREATE TABLE IF NOT EXISTS raw_host_metrics
+(
+    -- timestamp from the metric source
+    `timestamp` DateTime64(3),
+    -- name of the server, see LowCardinality -> https://clickhouse.com/docs/sql-reference/data-types/lowcardinality
+    `server`    LowCardinality(String),
+    -- name of the host / container
+    `host`      LowCardinality(String),
+    -- metric data
+    `name`      LowCardinality(String),
+    `kind`      LowCardinality(String),
+    `value`     Float64,
+    `tags`      Map(String, String)
+)
+    ENGINE = MergeTree()
+        PARTITION BY toYYYYMMDD(timestamp)
+        ORDER BY (server, host, name, timestamp)
+        TTL timestamp + INTERVAL 30 DAY;

@@ -27,11 +27,12 @@ services:
         sleep 1;
       done"
 
-
   # edge vector
   vector-edge:
     image: timberio/vector:nightly-alpine
     container_name: vector-edge
+    environment:
+      - VECTOR_SERVER=edge-logs-server-1
     depends_on:
       - app
     networks:
@@ -43,6 +44,27 @@ services:
       # file read logs
       - shared-logs:/var/log/shared:ro
 
+  # in production, vector-edge and vector-metrics is the same service / same container
+  # this is here for educational purposes only
+  vector-metrics:
+    image: timberio/vector:nightly-alpine
+    container_name: vector-metrics
+    environment:
+      # see https://vector.dev/docs/reference/configuration/sources/host_metrics/#environment-variables
+      - PROCFS_ROOT=/host/proc
+      - SYSFS_ROOT=/host/sys
+      # tag to identify the server
+      - VECTOR_SERVER=edge-metrics-server-1
+    volumes:
+      - ./vektor/vector-metrics.yaml:/etc/vector/vector.yaml:ro
+      # host metrics
+      - /proc:/host/proc:ro
+      - /sys:/host/sys:ro
+      # disk usage
+      - /:/host/root:ro
+    # so that network metrics collection is correct
+    network_mode: host
+
   vector-central:
     image: timberio/vector:nightly-alpine
     container_name: vector-central
@@ -52,6 +74,9 @@ services:
     expose:
       # central port for edge vectors to send data
       - "8080"
+    ports:
+      # because vector-metrics is in network_host, we have to map the port
+      - "8080:8080"
     volumes:
       - ./vektor/vector-central.yaml:/etc/vector/vector.yaml:ro
 

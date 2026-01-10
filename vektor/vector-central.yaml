@@ -1,9 +1,10 @@
 sources:
   # https://vector.dev/docs/reference/configuration/sources/http_server
   # consider putting behind proxy with TLS
-  from_edge:
+  http_ingest:
     type: "http_server"
     address: "0.0.0.0:8080"
+    path: "/vector/ingest"
     decoding:
       codec: "native"
     auth:
@@ -12,23 +13,109 @@ sources:
       password: "pass"
 
 transforms:
-  add_ingested_ts:
+  ingested_ts:
     type: "remap"
     inputs:
-      - from_edge
+      - http_ingest
     source: |
-      .ingested_ts = to_unix_timestamp(now(), unit: "milliseconds")
-      .raw_message = .message
+      .ingested_ts = to_unix_timestamp(now(), unit: "milliseconds")  
+
+  logs_filter:
+    type: "filter"
+    inputs:
+      - ingested_ts
+    condition:
+      type: "is_log"
+
+  metrics_filter:
+    type: "filter"
+    inputs:
+      - ingested_ts
+    condition:
+      type: "is_metric"
+
+  logs_funnel:
+    type: "remap"
+    inputs:
+      - logs_filter
+    source: |
+
+  # we have to remap metrics to logs to make clickhouse and metrics ingest work as clickhouse is logs only
+  metrics_to_logs:
+    type: "metric_to_log"
+    inputs:
+      - metrics_filter
+    host_tag: host
+
+  # and finally remap metrics to desired shape
+  metrics_funnel:
+    type: "remap"
+    inputs:
+      - metrics_to_logs
+    source: |
+      m = .
+      . = {}
+      
+      .timestamp, err = to_unix_timestamp(m.timestamp, unit: "milliseconds")
+      if err != null {
+        .timestamp = to_unix_timestamp(now(), unit: "milliseconds")
+      }
+
+      # best-effort numeric value across common metric types
+      if exists(m.gauge.value) {
+        .value = to_float!(m.gauge.value)
+      } else if exists(m.counter.value) {
+        .value = to_float!(m.counter.value)
+      } else {
+        .value = null
+      }
+      
+      . = {
+        "timestamp": .timestamp,
+        "server": m.tags.server || null,
+        "host": m.host || null,
+        "name": m.name,
+        "kind": m.kind || null,
+        "value": .value,
+        "tags": m.tags || {}
+      }
 
 sinks:
   # https://vector.dev/docs/reference/configuration/sinks/clickhouse/
-  to_clickhouse:
+  clickhouse_logs:
     type: "clickhouse"
     inputs:
-      - add_ingested_ts
+      - logs_funnel
     endpoint: "http://clickhouse:8123"
     database: "default"
     table: "raw_logs"
+    auth:
+      strategy: basic
+      user: "default"
+      password: "default"
+    skip_unknown_fields: true
+    # no need to compress as we run clickhouse and vector centrally
+    compression: "none"
+    # batching & buffering
+    buffer:
+      type: "disk"
+      # ~5GB
+      max_size: 5368709120
+      # do not drop incoming data
+      when_full: "block"
+    batch:
+      # goal is to insert as little as possible, while keeping reasonable latency
+      max_bytes: 10485760 # 10MB
+      timeout_secs: 15
+
+
+  clickhouse_metrics:
+    type: "clickhouse"
+    inputs:
+      - metrics_funnel
+    endpoint: "http://clickhouse:8123"
+    database: "default"
+    table: "raw_host_metrics"
     auth:
       strategy: basic
       user: "default"

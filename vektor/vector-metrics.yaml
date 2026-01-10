@@ -1,0 +1,45 @@
+sources:
+  basic_host_metrics:
+    type: "host_metrics"
+    # Optional: Customize collectors (defaults include cpu, memory, disk, network)
+    collectors: [ "cpu", "memory", "filesystem", "disk", "network", "load" ]
+    scrape_interval_secs: 15
+
+transforms:
+  # add host tag
+  add_server_tag:
+    type: "remap"
+    inputs:
+      - basic_host_metrics
+    source: |
+      .tags.server = "${VECTOR_SERVER}"
+
+sinks:
+  # https://vector.dev/docs/reference/configuration/sinks/http
+  to_central_vector:
+    type: "http"
+    inputs:
+      - add_server_tag
+    # central URL
+    # this is localhost, because metrics vector is running in host network mode
+    uri: "http://localhost:8080/vector/ingest"
+    auth:
+      strategy: "basic"
+      user: "central_vector_user"
+      password: "pass"
+
+    # how we send data, needs to be in sync with vector-central.yaml
+    compression: "zstd"
+    encoding:
+      codec: "native"
+
+    # buffering and batching
+    buffer:
+      type: "disk"
+      # ~1GB
+      max_size: 1073741824
+      # we don't really want to drop logs
+      when_full: "block"
+    batch:
+      # we don't really care about fast delivery
+      timeout_secs: 10

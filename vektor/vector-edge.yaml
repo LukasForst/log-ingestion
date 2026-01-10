@@ -53,9 +53,15 @@ transforms:
     inputs:
       - funnel_docker
       - file_parse
-    source: |
-      .grabbed_ts = to_unix_timestamp(now(), unit: "milliseconds")
-      .server = "edge_vector_1"
+    # we want to send only important data, so we drop everything except
+    source: |      
+      . = {
+        "grabbed_ts": to_unix_timestamp(now(), unit: "milliseconds"),
+        "raw_message": .message,
+        "server": "${VECTOR_SERVER}",
+        "type": .type,
+        "host": .host
+      }
 
 sinks:
   # https://vector.dev/docs/reference/configuration/sinks/http
@@ -65,13 +71,14 @@ sinks:
       - funnel_all
 
     # central URL
-    uri: "http://vector-central:8080"
+    uri: "http://vector-central:8080/vector/ingest"
     auth:
       strategy: "basic"
       user: "central_vector_user"
       password: "pass"
 
     # how we send data, needs to be in sync with vector-central.yaml
+    # TODO: if your edge is super lightweight, consider "gzip" or "none"
     compression: "zstd"
     encoding:
       codec: "native"
